@@ -87,3 +87,7 @@ Se aceptan pull requests, mejoras de código, integración con más fuentes OSIN
 Created with ❤️ by [@Zuk4r1](https://github.com/Zuk4r1).
 
 ## ¡Feliz hackeo! 🎯
+
+---
+## LICENCIA
+Este proyecto está licenciado bajo la licencia **MIT**. Consulte el archivo `LICENCIA` para más detalles.
