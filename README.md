@@ -80,6 +80,13 @@ El autor no se hace responsable por cualquier daño, pérdida de datos o uso mal
 # 🤝 Contribuciones
 
 Se aceptan pull requests, mejoras de código, integración con más fuentes OSINT y módulos de detección avanzados.
+  <br />
+	<br/>
+      	<p width="20px"><b>Donation for project development</p></b>
+	      <a href="https://buymeacoffee.com/investigacq"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=investigacqc&button_colour=FF5F5F&font_colour=ffffff&font_family=Cookie&outline_colour=000000&coffee_colour=FFDD00" /></a><br />
+      	<a href="https://www.paypal.com/paypalme/babiloniaetica"><img title="Donations For Projects" height="25" src="https://ionicabizau.github.io/badges/paypal.svg" /></a>
+</div>
+
 
 ---
 # 🧠 Autor
