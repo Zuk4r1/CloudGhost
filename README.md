@@ -64,10 +64,10 @@ CloudGhost combina múltiples fuentes OSINT y técnicas ofensivas pasivas para i
 
     [IPInfo.io](https://ipinfo.io/)
 
-- Librerías necesarias:
+- Instalar requirements.txt:
 
 ```bash
-pip install requests dnspython
+pip install requirements.txt
 ```
 ---
 ## 📦 Instalación y uso
