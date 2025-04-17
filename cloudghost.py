@@ -7,9 +7,9 @@ import dns.resolver
 from urllib.parse import urlparse
 from collections import defaultdict
 
-SHODAN_API_KEY = "FeO26aRMu5NaNf0DzMDHO6Uztb6IbIiR"
-IPINFO_TOKEN = "7db7570300e984"
-ZOOMEYE_API_KEY = "CD103Dd3-5D25-79163-3A7B-A8c0862d1c1c"
+SHODAN_API_KEY = "Api key"
+IPINFO_TOKEN = "Api key"
+ZOOMEYE_API_KEY = "Api key"
 
 BANNER = """
 \033[0;36m       __     
