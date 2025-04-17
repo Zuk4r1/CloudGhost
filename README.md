@@ -1,38 +1,73 @@
-# 🕵️‍♂️ CloudGhost 
+# 🕵️‍♂️ CloudGhost - Modo Ninja OSINT v1.3
 
-CloudGhost es una herramienta OSINT escrita en Python que permite intentar descubrir la **IP real de un servidor protegido por Cloudflare**, utilizando diversas técnicas de recopilación de inteligencia y resolución DNS. Fue desarrollada con fines educativos, para **auditorías de seguridad**, **pentesting ético** y **programas de bug bounty**.
+CloudGhost es una herramienta OSINT avanzada escrita en Python, diseñada para intentar descubrir la **IP real de un servidor protegido por Cloudflare u otros WAFs**, mediante múltiples técnicas de recopilación de inteligencia, escaneo DNS y análisis de infraestructura.
+Está pensada con fines educativos, perfecta para **auditorías de seguridad**, **pentesting ético** y **programas de bug bounty**.
 
 ---
+# 🆕 ¿Qué hay de nuevo en la versión 1.3?
+
+* 🔁 Nuevo sistema de barra de progreso visual en terminal (progreso dinámico por porcentaje).
+
+* 📜 Wayback Machine integrada: extrae archivos históricos como robots.txt o config.js.
+
+* 🔐 Soporte completo para ZoomEye con autenticación vía token JWT.
+
+* 📍 Enriquecimiento de IPs con IPInfo: ASN, ISP, geolocalización y hostname PTR.
+
+* 🧠 Análisis inteligente de headers HTTP (Server, X-Powered-By).
+
+* 📂 Sistema automático de guardado de IPs detectadas (ips_detectadas.txt).
+
+* 🔥 Más precisión en filtrado de IPs de Cloudflare (basado en prefijos actualizados).
+
+* 🧱 Código modular y optimizado para futuras ampliaciones OSINT.
 
 ## 📜 Descripción
 
-CloudGhost combina múltiples técnicas para rastrear posibles IPs filtradas que puedan estar expuestas, aun si el dominio principal está protegido por Cloudflare. Su enfoque es encontrar pistas a través de registros DNS, subdominios mal configurados, consultas a Shodan y escaneo de registros PTR (DNS inverso).
+CloudGhost combina múltiples fuentes OSINT y técnicas ofensivas pasivas para identificar posibles filtraciones de IP, incluso si el dominio principal está protegido tras servicios como Cloudflare. Su poder está en la combinación de certificados, DNS, escaneos externos y consultas enriquecidas.
 
 ---
 
 ## 🚀 Características
 
-- 🔍 Consulta de subdominios vía Hackertarget
-- 🌐 Resolución de IPs desde subdominios expuestos
-- 🔁 Escaneo DNS inverso (PTR Lookup)
-- 🧠 Integración con la API de **Shodan**
-- 🚫 Filtrado de IPs que pertenecen a rangos de Cloudflare
-- 🗺️ Información adicional de geolocalización e ISP
-- 📊 Barra de progreso visual integrada
-- 🖥️ Interfaz limpia desde consola
+- 📑 Extracción de subdominios desde crt.sh
+
+- 🕰️ Análisis histórico vía Wayback Machine
+
+- 🌐 Resolución masiva de subdominios a IPs
+
+- 🔎 Integración con Shodan API
+
+- 🌍 Soporte para ZoomEye API
+
+- 🔁 PTR Lookup (DNS inverso)
+
+- 🧠 Enriquecimiento con IPInfo API
+
+- 🔐 Filtro automático de IPs de Cloudflare
+
+- 🖥️ Escaneo de headers HTTP
+
+- 📊 Progreso visual dinámico
+
+- 🧾 Guardado automático de IPs útiles
 
 ---
 
 ## ⚙️ Requisitos
 
-- Python 3.x
-- Acceso a Internet
-- Una cuenta gratuita en [Shodan.io](https://shodan.io) con una API Key válida
+- API Keys válidas de:
 
-Instala las dependencias necesarias (usa solo módulos estándar más `requests`):
+    [Shodan.io](https://shodan.io)
+  
+    [ZoomEye](https://www.zoomeye.ai/)
+
+    [IPInfo.io](https://ipinfo.io/)
+
+- Librerías necesarias:
 
 ```bash
-pip install requests
+pip install requests dnspython
 ```
 ---
 ## 📦 Instalación y uso
@@ -58,23 +93,36 @@ python3 cloudghost.py vulnerable.site
 
 ```bash
 [+] Escaneando: vulnerable.site
-[####################--------------------] 50.00%
-[*] Consultando subdominios vía Hackertarget...
-[*] Consultando PTR reverso...
+[##################------------------------] 40.00%
+[*] Extrayendo subdominios desde crt.sh...
+[*] Buscando URLs filtradas en Wayback Machine...
+[*] Resolviendo subdominios...
 [*] Consultando Shodan...
-[##############################----------] 75.00%
-...
-IP real detectada   : 198.51.100.42
-Organización        : DigitalOcean
-Ubicación           : US, New York, NY
+[*] Consultando ZoomEye...
+[##################################--------] 90.00%
+
+[ RESULTADOS ]
+ Dominio objetivo    : vulnerable.site
+ IP Cloudflare       : 104.26.14.123
+ IP real detectada   : 45.67.89.101
+ PTR Hostname        : server.vulnhost.net
+ Organización        : OVH SAS
+ ASN                 : AS16276
+ País                : FR
+ Ubicación           : Hauts-de-France - Gravelines (50.1234,2.5678)
+ Zona horaria        : Europe/Paris
+ Server Header       : nginx
+ X-Powered-By        : PHP/8.1.12
+
 ```
 ---
 ## 🔐 Advertencia legal
 
-**⚠️ CloudGhost** fue creada únicamente con fines educativos, de investigación y para pruebas de seguridad autorizadas.
+**⚠️ CloudGhost** fue creada únicamente con fines educativos, de investigación y para pruebas de seguridad con consentimiento previo.
 
-El uso indebido de esta herramienta puede violar leyes locales, nacionales o internacionales. No está permitido usarla contra sistemas sin consentimiento explícito del propietario.
-El autor no se hace responsable por cualquier daño, pérdida de datos o uso malintencionado.
+ El uso indebido de esta herramienta puede violar leyes locales o internacionales.
+
+## El autor no se responsabiliza por daños derivados de su uso incorrecto o malicioso.
 
 ---
 # 🤝 Contribuciones
