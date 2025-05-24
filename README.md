@@ -75,7 +75,7 @@ CloudGhost combina múltiples fuentes OSINT, APIs avanzadas, escaneo de infraest
 
     [SecurityTrails](https://securitytrails.com/)
   
-- Instalar requirements.txt:
+- Instalar **requirements.txt**:
 
 ```bash
 pip install requirements.txt
