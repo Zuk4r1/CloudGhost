@@ -11,6 +11,8 @@ import time
 import ipaddress
 import re
 import whois
+import threading
+import random
 
 # API KEYS (coloca aquí tus claves)
 ZOOMEYE_API_KEY = "API_KEY"
@@ -24,7 +26,7 @@ WORKERS_AI_API_KEY = "API_KEY"
 
 BANNER = """
 \033[0;36m       __     
-\033[0;36m    __(  )_      \033[1;97m\033[4;37mCloudGhost Modo Ninja OSINT\033[0;0m \033[4;31mv3.3\033[0;0m
+\033[0;36m    __(  )_      \033[1;97m\033[4;37mCloudGhost Modo Ninja OSINT\033[0;0m \033[4;31mv3.6\033[0;0m
 \033[0;36m __(       )__   \033[0;0mAuthor:\033[4;31m@Zuk4r1
 \033[0;36m(_____________)  \033[0;0mDetecta IP real tras Cloudflare
 \033[0;36m  /⚡/⚡/⚡/    \033[0;0m
@@ -34,36 +36,62 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"
 }
 
-# Lista oficial de rangos Cloudflare (actualizada)
+# User-Agents para rotación
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    "Mozilla/5.0 (X11; Linux x86_64)",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)",
+    "Mozilla/5.0 (Android 11; Mobile; rv:89.0)"
+]
+
+# Proxies (puedes añadir más o cargar desde archivo)
+PROXIES = [
+    None,  # Sin proxy
+    # "http://127.0.0.1:8080",
+    # "socks5://127.0.0.1:9050"
+]
+
+# Lista oficial de rangos Cloudflare (ampliada y actualizada)
 CLOUDFLARE_RANGES = [
-    # IPv4 (lista ampliada y agresiva, incluye todos los rangos públicos y algunos históricos)
-    "173.245.48.0/20",
+    # IPv4 (oficial + históricos y ampliados)
     "103.21.244.0/22",
     "103.22.200.0/22",
     "103.31.4.0/22",
-    "141.101.64.0/18",
-    "108.162.192.0/18",
-    "190.93.240.0/20",
-    "188.114.96.0/20",
-    "197.234.240.0/22",
-    "198.41.128.0/17",
-    "162.158.0.0/15",
-    "104.16.0.0/13",
+    "104.16.0.0/12",
     "104.24.0.0/14",
-    "172.64.0.0/13",
+    "104.28.0.0/15",
+    "108.162.192.0/18",
     "131.0.72.0/22",
-    "104.18.0.0/15",
-    "162.159.192.0/18",
+    "141.101.64.0/18",
+    "162.158.0.0/15",
     "162.159.0.0/16",
+    "162.159.192.0/18",
+    "172.64.0.0/13",
+    "173.245.48.0/20",
+    "188.114.96.0/20",
     "188.114.97.0/24",
     "188.114.98.0/24",
     "188.114.99.0/24",
     "188.114.100.0/22",
+    "188.114.96.0/23",
+    "188.114.98.0/23",
+    "188.114.100.0/23",
+    "188.114.102.0/23",
+    "188.114.104.0/22",
+    "188.114.108.0/22",
+    "188.114.112.0/20",
+    "190.93.240.0/20",
     "190.93.241.0/24",
     "190.93.242.0/23",
     "190.93.244.0/22",
+    "190.93.240.0/21",
+    "190.93.248.0/21",
+    "197.234.240.0/22",
     "197.234.241.0/24",
     "197.234.242.0/23",
+    "197.234.240.0/21",
+    "198.41.128.0/17",
     "198.41.129.0/24",
     "198.41.130.0/23",
     "198.41.132.0/22",
@@ -76,18 +104,7 @@ CLOUDFLARE_RANGES = [
     "104.22.0.0/15",
     "141.101.120.0/21",
     "162.159.128.0/17",
-    "188.114.96.0/23",
-    "188.114.98.0/23",
-    "188.114.100.0/23",
-    "188.114.102.0/23",
-    "188.114.104.0/22",
-    "188.114.108.0/22",
-    "188.114.112.0/20",
-    "190.93.240.0/21",
-    "190.93.248.0/21",
-    "197.234.240.0/21",
-    "198.41.128.0/18",
-    # IPv6 (lista extendida y eficiente, cubre todos los rangos públicos conocidos de Cloudflare)
+    # IPv6 (oficial + extendidos)
     "2400:cb00::/32",
     "2405:8100::/32",
     "2405:b500::/32",
@@ -113,7 +130,7 @@ CLOUDFLARE_RANGES = [
     "2a09:bac8000::/17",
     "2a09:bac10000::/16",
     "2c0f:f248::/32",
-    # Rango adicional de Cloudflare IPv6 (por bloques de asignación RIPE/ARIN y otras fuentes públicas)
+    # Rango adicional de Cloudflare IPv6 (RIPE/ARIN y otras fuentes públicas)
     "2a12:4940::/29",
     "2a13:5240::/29",
     "2a14:4c00::/29",
@@ -130,7 +147,7 @@ CLOUDFLARE_RANGES = [
     "2a15:9500::/29",
     "2a15:9600::/29",
     "2a15:9700::/29",
-    # Nuevos rangos publicados por Cloudflare (actualización 2024-2025, https://www.cloudflare.com/ips/)
+    # Nuevos rangos publicados por Cloudflare (2024-2025 y ampliados)
     "2a06:98c0:1000::/36",
     "2a06:98c0:2000::/36",
     "2a06:98c0:3000::/36",
@@ -140,7 +157,17 @@ CLOUDFLARE_RANGES = [
     "2a06:98c0:7000::/36",
     "2a10:50c0::/29",
     "2a11:fa40::/29",
-    # ...puedes agregar más rangos si Cloudflare los publica en el futuro...
+    # Otros bloques públicos conocidos (puedes ampliar según fuentes públicas)
+    "2a10:6000::/29",
+    "2a10:7000::/29",
+    "2a10:8000::/29",
+    "2a10:9000::/29",
+    "2a10:a000::/29",
+    "2a10:b000::/29",
+    "2a10:c000::/29",
+    "2a10:d000::/29",
+    "2a10:e000::/29",
+    "2a10:f000::/29"
 ]
 
 def limpiar_url(url):
@@ -339,9 +366,18 @@ def escanear_headers(domain_or_ip):
     return resultados
 
 def ip_in_cloudflare(ip):
-    for net in CLOUDFLARE_RANGES:
-        if ipaddress.ip_address(ip) in ipaddress.ip_network(net):
-            return True
+    try:
+        # Validar que ip no sea None, vacía, ni un hostname
+        if not ip or not isinstance(ip, str):
+            return False
+        # Solo aceptar IPv4 o IPv6 válidas
+        ip_obj = ipaddress.ip_address(ip)
+        for net in CLOUDFLARE_RANGES:
+            if ip_obj in ipaddress.ip_network(net):
+                return True
+    except Exception:
+        # Si no es una IP válida, no está en Cloudflare
+        return False
     return False
 
 def buscar_subdominios_securitytrails(domain):
@@ -608,6 +644,166 @@ def consultar_workers_ai(query, model="llama-2-7b-chat-fp16"):
 def filtrar_ips_cloudflare(ips):
     return [ip for ip in ips if not ip_in_cloudflare(ip)]
 
+def random_headers():
+    headers = HEADERS.copy()
+    headers["User-Agent"] = random.choice(USER_AGENTS)
+    return headers
+
+def escanear_puertos_avanzado(ip, puertos=None, threads=50):
+    print(f"[*] Escaneo avanzado de puertos para {ip} (multi-thread)...")
+    if puertos is None:
+        puertos = list(range(1, 1025)) + [3306, 5432, 6379, 11211, 27017, 9200, 5000, 8000, 8080, 8443, 8888, 27018, 27019]
+    abiertos = []
+    lock = threading.Lock()
+    def scan_port(p):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.7)
+            if s.connect_ex((ip, p)) == 0:
+                with lock:
+                    abiertos.append(p)
+            s.close()
+        except:
+            pass
+    threads_list = []
+    for puerto in puertos:
+        t = threading.Thread(target=scan_port, args=(puerto,))
+        t.start()
+        threads_list.append(t)
+        if len(threads_list) >= threads:
+            for th in threads_list:
+                th.join()
+            threads_list = []
+    for th in threads_list:
+        th.join()
+    return abiertos
+
+def banner_grabbing(ip, puerto):
+    try:
+        s = socket.socket()
+        s.settimeout(1)
+        s.connect((ip, puerto))
+        s.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
+        data = s.recv(1024)
+        s.close()
+        return data.decode(errors="ignore")
+    except:
+        return ""
+
+def detectar_tecnologias(url):
+    print(f"[*] Fingerprinting de tecnologías web en {url}...")
+    tecnologias = set()
+    try:
+        r = requests.get(url, headers=random_headers(), timeout=8, verify=False, allow_redirects=True)
+        headers = r.headers
+        html = r.text
+        # Detección básica por headers
+        if "x-powered-by" in headers:
+            tecnologias.add(headers["x-powered-by"])
+        if "server" in headers:
+            tecnologias.add(headers["server"])
+        # Detección por HTML
+        if "wp-content" in html or "wordpress" in html.lower():
+            tecnologias.add("WordPress")
+        if "drupal" in html.lower():
+            tecnologias.add("Drupal")
+        if "joomla" in html.lower():
+            tecnologias.add("Joomla")
+        if "set-cookie" in headers and "PHPSESSID" in headers["set-cookie"]:
+            tecnologias.add("PHP")
+        if "X-AspNet-Version" in headers:
+            tecnologias.add("ASP.NET")
+        if "laravel_session" in headers.get("set-cookie", ""):
+            tecnologias.add("Laravel")
+        # ...puedes añadir más firmas...
+    except:
+        pass
+    return list(tecnologias)
+
+def fuzz_directorios(domain_or_ip, wordlist=None):
+    print(f"[*] Fuzzing de directorios y archivos comunes en {domain_or_ip}...")
+    if wordlist is None:
+        wordlist = ["admin", "login", "config", ".env", "phpinfo.php", "backup", "test", "old", "dev", "api", "robots.txt"]
+    encontrados = []
+    for proto in ["http", "https"]:
+        for word in wordlist:
+            url = f"{proto}://{domain_or_ip}/{word}"
+            try:
+                r = requests.get(url, headers=random_headers(), timeout=4, verify=False, allow_redirects=False)
+                if r.status_code in [200, 301, 302, 403]:
+                    encontrados.append((url, r.status_code))
+            except:
+                continue
+    return encontrados
+
+def detectar_waf(domain_or_ip):
+    print(f"[*] Detección de WAF/firewall en {domain_or_ip}...")
+    wafs = {
+        "cloudflare": ["cloudflare", "__cfduid", "cf-ray"],
+        "sucuri": ["sucuri"],
+        "incapsula": ["incap_ses", "incapsula"],
+        "aws": ["awselb", "awsalb"],
+        "f5": ["bigip"],
+        "barracuda": ["barra"],
+        "imperva": ["imperva"],
+        "akamai": ["akamai"],
+        "mod_security": ["mod_security"],
+        # ...puedes añadir más firmas...
+    }
+    try:
+        r = requests.get(f"http://{domain_or_ip}", headers=random_headers(), timeout=5, verify=False)
+        headers = str(r.headers).lower()
+        html = r.text.lower()
+        for nombre, firmas in wafs.items():
+            for firma in firmas:
+                if firma in headers or firma in html:
+                    return nombre
+    except:
+        pass
+    return "No detectado"
+
+def buscar_leaks_github(domain):
+    print(f"[*] Buscando posibles leaks en GitHub para {domain}...")
+    leaks = []
+    try:
+        r = requests.get(f"https://api.github.com/search/code?q={domain}", headers=random_headers(), timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            for item in data.get("items", []):
+                leaks.append(item.get("html_url"))
+    except:
+        pass
+    return leaks
+
+def buscar_leaks_pastebin(domain):
+    print(f"[*] Buscando posibles leaks en Pastebin para {domain}...")
+    leaks = []
+    try:
+        r = requests.get(f"https://scrape.pastebin.com/api_scraping.php?limit=50", timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            for item in data:
+                if domain in item.get("title", "") or domain in item.get("key", ""):
+                    leaks.append(item.get("scrape_url"))
+    except:
+        pass
+    return leaks
+
+def escanear_vulnerabilidades(ip, puertos):
+    print(f"[*] Escaneo rápido de vulnerabilidades conocidas en {ip}...")
+    vulns = []
+    # Ejemplo: detectar SMBv1, versiones inseguras de HTTP, etc.
+    for puerto in puertos:
+        banner = banner_grabbing(ip, puerto)
+        if "smb" in banner.lower() and "version: 1" in banner.lower():
+            vulns.append(f"SMBv1 inseguro en puerto {puerto}")
+        if "apache/2.2" in banner.lower():
+            vulns.append(f"Apache 2.2 detectado (EOL) en puerto {puerto}")
+        if "iis/6.0" in banner.lower():
+            vulns.append(f"IIS 6.0 detectado (EOL) en puerto {puerto}")
+        # ...puedes añadir más firmas de CVE...
+    return vulns
+
 def main():
     os.system("clear")
     print(BANNER)
@@ -643,8 +839,13 @@ def main():
     candidatas = filtrar_ips_cloudflare(todas)
     mostrar_barra_progreso(60)
 
-    # Priorización por puertos abiertos
-    ip_puertos = priorizar_ips_por_puertos(candidatas)
+    # Priorización por puertos abiertos (ahora avanzado)
+    ip_puertos = []
+    for ip in candidatas:
+        abiertos = escanear_puertos_avanzado(ip)
+        if abiertos:
+            ip_puertos.append((ip, abiertos))
+    ip_puertos.sort(key=lambda x: len(x[1]), reverse=True)
     mostrar_barra_progreso(70)
 
     # Escaneo de puertos y bypass HTTP
@@ -671,6 +872,22 @@ def main():
     # WHOIS y DNS history
     whois_info = whois_dns_history(dominio)
 
+    # Fingerprinting de tecnologías web
+    tecnologias = detectar_tecnologias(f"http://{ip_real}")
+
+    # Fuzzing de directorios
+    fuzz = fuzz_directorios(ip_real)
+
+    # Detección de WAF/firewall
+    waf = detectar_waf(ip_real)
+
+    # Búsqueda de leaks
+    leaks_github = buscar_leaks_github(dominio)
+    leaks_pastebin = buscar_leaks_pastebin(dominio)
+
+    # Escaneo de vulnerabilidades
+    vulns = escanear_vulnerabilidades(ip_real, puertos)
+
     print("\n\n\033[1;92m[ RESULTADOS AVANZADOS ]\033[0;0m")
     print(f" Dominio objetivo    : {dominio}")
     print(f" IP Cloudflare       : {cf_ip}")
@@ -688,6 +905,12 @@ def main():
     print(f" Server Header HTTPS : {headers.get('https://'+ip_real, {}).get('Server', '')}")
     print(f" X-Powered-By HTTPS  : {headers.get('https://'+ip_real, {}).get('X-Powered-By', '')}")
     print(f" Título HTTPS        : {headers.get('https://'+ip_real, {}).get('Title', '')}")
+    print(f" Tecnologías Web     : {tecnologias}")
+    print(f" WAF/Firewall        : {waf}")
+    print(f" Directorios/Archivos: {fuzz}")
+    print(f" Vulnerabilidades    : {vulns}")
+    print(f" Leaks GitHub        : {leaks_github}")
+    print(f" Leaks Pastebin      : {leaks_pastebin}")
     print("\n[ WHOIS ]")
     for k, v in whois_info.items():
         print(f"  {k}: {v}")
