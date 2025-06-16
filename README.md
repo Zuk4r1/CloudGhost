@@ -1,93 +1,103 @@
-# 🕵️‍♂️ CloudGhost - Modo Ninja OSINT v3.3
-CloudGhost es una herramienta OSINT avanzada escrita en Python, diseñada para descubrir la IP real detrás de un servidor protegido por Cloudflare u otros WAFs, mediante técnicas pasivas y activas de recopilación de inteligencia, resolución DNS avanzada, escaneo de infraestructura y análisis multifuente.
+# 🕵️‍♂️ CloudGhost - Modo Ninja OSINT V3.6
 
-Pensada con fines educativos, auditorías de seguridad, pentesting ético y bug bounty, CloudGhost automatiza un flujo completo de OSINT ofensivo.
+**CloudGhost** es una herramienta **OSINT** avanzada escrita en Python, diseñada para descubrir la IP real detrás de un servidor protegido por **Cloudflare** u otros **WAFs**, mediante técnicas pasivas y activas de recopilación de inteligencia, resolución DNS agresiva, fingerprinting y análisis multifuente.
+
+**Pensada con fines educativos, auditorías de seguridad, pentesting ético y bug bounty, CloudGhost automatiza un flujo completo de OSINT ofensivo.**
 
 ---
 
-# 🆕 ¿Qué hay de nuevo en la versión 3.3?
+# 🆕 ¿Qué hay de nuevo en la versión 3.6?
 
-🌐 Ampliación y actualización de rangos IP de Cloudflare, incluyendo históricos, nuevos bloques IPv4/IPv6 y rangos para 2024-2025.
+🌐 **Rangos IP de Cloudflare ampliados**: Se incluyen bloques históricos, IPv4/IPv6 actuales y rangos de 2024–2025.
 
-🔁 Resolución de subdominios más agresiva y recursiva desde múltiples fuentes (crt.sh, Wayback Machine, VirusTotal, ThreatCrowd, SecurityTrails...).
+🔁 **Resolución de subdominios más agresiva**: Se usan múltiples fuentes como crt.sh, Wayback Machine, VirusTotal, ThreatCrowd, SecurityTrails...
 
-🧠 Resolución DNS masiva y avanzada con múltiples tipos de registros: A, AAAA, MX, TXT, CNAME, NS, SOA, SRV, PTR.
+🧠 **Resolución DNS masiva**: Tipos A, AAAA, MX, TXT, CNAME, NS, SOA, SRV, PTR e históricos.
 
-🔗 Integración de APIs externas: Shodan, ZoomEye, VirusTotal, SecurityTrails, IPinfo y Workers AI de Cloudflare.
+🕵️ **USER_AGENTS y PROXIES avanzados**: Amplia rotación de agentes de usuario (desktop, móvil, bots) y proxies HTTP, HTTPS, SOCKS4/5 de múltiples ubicaciones.
 
-🚪 Priorización de IPs candidatas por escaneo de puertos abiertos (80, 443, 8080...) y técnicas automáticas de bypass HTTP/HTTPS.
+🚪 **Bypass HTTP/HTTPS avanzado**: Rutas, métodos HTTP, puertos y cabeceras combinadas, con soporte SNI para HTTPS.
 
-🕰️ IPs históricas desde ViewDNS y SecurityTrails. Consulta WHOIS y DNS History.
+⚡ **Priorización inteligente de IPs**: Basado en puertos abiertos, escaneo multi-thread y rangos extendidos.
 
-🧾 Mejoras visuales y robustez: barra de progreso optimizada, mejor manejo de errores, y salida más clara.
+🔍 **Fingerprinting web mejorado**: Análisis de headers y HTML para detección de tecnologías y servicios.
 
-🧱 Código modular y extensible para nuevas técnicas OSINT.
+🗂️ **Fuzzing y búsqueda de leaks**: Detección de directorios y archivos comunes, leaks en GitHub y Pastebin.
+
+🧪 **Escaneo básico de vulnerabilidades**: Identificación de servicios inseguros y versiones vulnerables.
+
+🔗 **Soporte multifuente OSINT**: crt.sh, Wayback Machine, VirusTotal, ThreatCrowd, Shodan, ZoomEye, SecurityTrails, ViewDNS y más.
+
+📊 **Mejoras visuales**: Reporte estructurado, barra de progreso y banner más claro.
+
+🧱 **Código modular y extensible**: Preparado para futuras técnicas OSINT y detección evasiva.
 
 ---
 
 # 📜 Descripción
 
-CloudGhost combina múltiples fuentes OSINT, APIs avanzadas, escaneo de infraestructura y resolución DNS agresiva para encontrar filtraciones de IP, incluso si el servidor está completamente tras Cloudflare. Automatiza descubrimiento, filtrado y validación de IPs reales con priorización inteligente.
+**CloudGhost** combina técnicas pasivas y activas de **OSINT** ofensivo para encontrar la IP real detrás de un firewall, mediante resolución DNS profunda, escaneo de infraestructura, análisis de servicios y validación multifuente.
 
 ---
 
 # 🚀 Características Principales
 
-📑 Extracción de subdominios desde crt.sh, VirusTotal, SecurityTrails, ThreatCrowd...
+📑 Subdominios desde crt.sh, VirusTotal, SecurityTrails, ThreatCrowd...
 
-🕰️ Análisis histórico vía Wayback Machine, ViewDNS y WHOIS History.
+🕰️ Análisis histórico vía Wayback Machine, ViewDNS, WHOIS History.
 
 🌐 Resolución DNS avanzada (A, AAAA, MX, TXT, CNAME, NS, PTR, SOA, SRV...).
 
-🔍 Escaneo de puertos comunes (80, 443, 22...) para priorizar IPs accesibles.
+🔄 Rotación avanzada de proxies y agentes de usuario (HTTP, SOCKS4/5, móviles, crawlers...).
 
-🧠 Técnicas automáticas de bypass HTTP/HTTPS y validación.
+🔍 Escaneo de puertos comunes y extendidos (80, 443, 22, 21, 3306...).
 
-🔒 Filtro de IPs de Cloudflare actualizado (rangos oficiales + extendidos).
+🧠 Técnicas automáticas de bypass HTTP/HTTPS (cabeceras, rutas, SNI...).
 
-🤖 Integración con APIs: Shodan, ZoomEye, VirusTotal, SecurityTrails, IPinfo, Workers AI.
+🔒 Filtro de IPs de Cloudflare actualizado y extendido.
 
-🧠 Análisis inteligente de headers HTTP (Server, X-Powered-By...).
+🧠 Fingerprinting de tecnologías por headers y contenido web.
 
-📍 Enriquecimiento de IPs detectadas con IPInfo (ASN, país, ubicación, ISP...).
+🔗 Integración con APIs: Shodan, ZoomEye, VirusTotal, SecurityTrails, IPinfo, Workers AI.
 
-📜 Guardado automático de IPs útiles (ips_detectadas.txt).
+🧠 Análisis de headers HTTP (Server, X-Powered-By...), banners de servicios.
 
-📊 Barra de progreso visual mejorada en consola.
+📍 Enriquecimiento con IPInfo: ASN, país, ISP, ubicación, zona horaria.
 
-🧱 Código modular para futuras ampliaciones.
+📂 Fuzzing de rutas, búsqueda de leaks en Pastebin y GitHub.
+
+🧪 Escaneo básico de vulnerabilidades en servicios descubiertos.
+
+📜 Guardado automático en `ips_detectadas.txt`.
+
+📊 Barra de progreso visual clara y estructurada.
+
+🧱 Modularidad total para ampliar funcionalidades.
 
 ---
 
 ## ⚙️ Requisitos
 
-- API Keys válidas de:
+**- API Keys válidas de:**
 
-    [Shodan.io](https://shodan.io)
-  
-    [ZoomEye](https://www.zoomeye.ai/)
+  - [Shodan.io](https://shodan.io)  
+  - [ZoomEye](https://www.zoomeye.ai/)  
+  - [IPInfo.io](https://ipinfo.io/)  
+  - [Virustotal](https://www.virustotal.com/gui/home/upload)  
+  - [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)  
+  - [SecurityTrails](https://securitytrails.com/)
 
-    [IPInfo.io](https://ipinfo.io/)
-
-    [Virustotal](https://www.virustotal.com/gui/home/upload)
-
-    [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
-
-    [SecurityTrails](https://securitytrails.com/)
-  
-- Instalar **requirements.txt**:
-
+**- Instalar dependencias:**
 ```bash
-pip install requirements.txt
+pip install -r requirements.txt
 ```
----
+
 ## 📦 Instalación y uso
 
 **1. Clona este repositorio:**
-
 ```bash
 git clone https://github.com/Zuk4r1/CloudGhost.git
-cd cloudghost
+cd CloudGhost
 ```
 
 **2. Ejecuta la herramienta:**
@@ -100,8 +110,7 @@ python3 cloudghost.py <dominio.com>
 python3 cloudghost.py vulnerable.site
 ```
 
-# 🧪 Ejemplo de salida
-
+## 🧪 Ejemplo de salida
 ```bash
 [+] Escaneando: vulnerable.site
 [#######-----------------------------] 22.00%
@@ -128,18 +137,13 @@ python3 cloudghost.py vulnerable.site
  DNS History          : IPs antiguas: 45.67.89.10, 185.101.22.2
 
 [*] IPs candidatas guardadas en: ips_detectadas.txt
-
 ```
----
+
 ## 🔐 Advertencia legal
-
 **⚠️ CloudGhost** fue creada únicamente con fines educativos, de investigación y para pruebas de seguridad con consentimiento previo.
+El uso indebido de esta herramienta puede violar leyes locales o internacionales.
+El autor no se responsabiliza por daños derivados de su uso incorrecto o malicioso.
 
- El uso indebido de esta herramienta puede violar leyes locales o internacionales.
-
-## El autor no se responsabiliza por daños derivados de su uso incorrecto o malicioso.
-
----
 # 🤝 Contribuciones
 
 Se aceptan pull requests, mejoras de código, integración con más fuentes OSINT y módulos de detección avanzados.
