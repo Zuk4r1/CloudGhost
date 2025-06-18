@@ -157,8 +157,7 @@ Si esta herramienta te ha sido útil, puedes apoyar su desarrollo con una donaci
 
 Created with ❤️ by [@Zuk4r1](https://github.com/Zuk4r1). – defensor del hacking ético y la investigación digital.
 
-## ¡Feliz hackeo! 🎯
+## ⚖️ LICENCIA
+Este proyecto está licenciado bajo la licencia **MIT**. Consulte el archivo [`LICENCIA`](https://github.com/Zuk4r1/CloudGhost/blob/main/LICENSE) para más detalles.
 
----
-## LICENCIA
-Este proyecto está licenciado bajo la licencia **MIT**. Consulte el archivo `LICENCIA` para más detalles.
+## ¡Feliz hackeo! 🎯
