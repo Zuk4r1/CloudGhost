@@ -144,15 +144,13 @@ python3 cloudghost.py vulnerable.site
 El uso indebido de esta herramienta puede violar leyes locales o internacionales.
 El autor no se responsabiliza por daños derivados de su uso incorrecto o malicioso.
 
-# 🤝 Contribuciones
+## 🤝 ¡Apoya el proyecto!
 
-Se aceptan pull requests, mejoras de código, integración con más fuentes OSINT y módulos de detección avanzados.
-  <br />
-	<br/>
-      	<p width="20px"><b>Se aceptan donaciones para mantener este proyecto</p></b>
-	      <a href="https://buymeacoffee.com/investigacq"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=investigacqc&button_colour=FF5F5F&font_colour=ffffff&font_family=Cookie&outline_colour=000000&coffee_colour=FFDD00" /></a><br />
-      	<a href="https://www.paypal.com/paypalme/babiloniaetica"><img title="Donations For Projects" height="25" src="https://ionicabizau.github.io/badges/paypal.svg" /></a>
-</div>
+Si esta herramienta te ha sido útil, puedes apoyar su desarrollo con una donación:
+
+☕ [Buy Me a Coffee](https://buymeacoffee.com/investigacq)
+
+💸 [PayPal](https://www.paypal.com/paypalme/babiloniaetica)
 
 ---
 # 🧠 Autor
