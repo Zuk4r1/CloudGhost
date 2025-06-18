@@ -1,3 +1,4 @@
+
 # 🕵️‍♂️ CloudGhost - Modo Ninja OSINT V3.6
 
 **CloudGhost** es una herramienta **OSINT** avanzada escrita en Python, diseñada para descubrir la IP real detrás de un servidor protegido por **Cloudflare** u otros **WAFs**, mediante técnicas pasivas y activas de recopilación de inteligencia, resolución DNS agresiva, fingerprinting y análisis multifuente.
