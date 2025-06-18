@@ -333,35 +333,125 @@ def dns_ptr_lookup(ip):
 def obtener_datos_ip(ip):
     try:
         info = requests.get(f"https://ipinfo.io/{ip}?token={IPINFO_TOKEN}").json()
+        org = info.get("org", "Desconocido")
+        asn = info.get("asn", {}).get("asn", "N/A")
+        pais = info.get("country", "Desconocido")
+        ubicacion = info.get("loc", "")
+        ciudad = info.get("city", "")
+        region = info.get("region", "")
+        zona = info.get("timezone", "")
+
+        # Precisión: consulta fuentes adicionales si hay valores por defecto
+        if org == "Desconocido":
+            try:
+                r = requests.get(f"https://ipapi.co/{ip}/org/", timeout=5)
+                if r.status_code == 200 and r.text.strip() and "Desconocido" not in r.text:
+                    org = r.text.strip()
+            except:
+                pass
+        if asn == "N/A":
+            try:
+                r = requests.get(f"https://api.hackertarget.com/aslookup/?q={ip}", timeout=5)
+                if r.status_code == 200 and r.text.startswith("AS"):
+                    asn = r.text.split()[0]
+            except:
+                pass
+        if pais == "Desconocido":
+            try:
+                r = requests.get(f"https://ipapi.co/{ip}/country_name/", timeout=5)
+                if r.status_code == 200 and r.text.strip() and "Desconocido" not in r.text:
+                    pais = r.text.strip()
+            except:
+                pass
+        if not ubicacion or ubicacion == ",":
+            try:
+                r = requests.get(f"https://ipapi.co/{ip}/latlong/", timeout=5)
+                if r.status_code == 200 and r.text.strip():
+                    ubicacion = r.text.strip()
+            except:
+                pass
+        if not ciudad:
+            try:
+                r = requests.get(f"https://ipapi.co/{ip}/city/", timeout=5)
+                if r.status_code == 200 and r.text.strip():
+                    ciudad = r.text.strip()
+            except:
+                pass
+        if not region:
+            try:
+                r = requests.get(f"https://ipapi.co/{ip}/region/", timeout=5)
+                if r.status_code == 200 and r.text.strip():
+                    region = r.text.strip()
+            except:
+                pass
+        if not zona:
+            try:
+                r = requests.get(f"https://ipapi.co/{ip}/timezone/", timeout=5)
+                if r.status_code == 200 and r.text.strip():
+                    zona = r.text.strip()
+            except:
+                pass
+
+        # Extra: consulta ARIN si sigue sin datos
+        if org == "Desconocido" or asn == "N/A":
+            try:
+                r = requests.get(f"https://rdap.arin.net/registry/ip/{ip}", timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    if org == "Desconocido":
+                        org = data.get("name") or data.get("handle") or org
+                    if asn == "N/A":
+                        asn = data.get("autnum") or asn
+            except:
+                pass
+
         return {
             "ip": info.get("ip"),
-            "org": info.get("org", "Desconocido"),
-            "asn": info.get("asn", {}).get("asn", "N/A"),
+            "org": org,
+            "asn": asn,
             "hostname": dns_ptr_lookup(ip),
-            "pais": info.get("country", "Desconocido"),
-            "ubicacion": info.get("loc", ""),
-            "ciudad": info.get("city", ""),
-            "region": info.get("region", ""),
-            "zona": info.get("timezone", "")
+            "pais": pais,
+            "ubicacion": ubicacion,
+            "ciudad": ciudad,
+            "region": region,
+            "zona": zona
         }
     except:
         return {}
 
 def escanear_headers(domain_or_ip):
+    # Si los headers principales son por defecto, prueba puertos alternativos
     print(f"[*] Analizando headers para {domain_or_ip} (HTTP y HTTPS, agresivo)...")
     resultados = {}
     urls = [f"http://{domain_or_ip}", f"https://{domain_or_ip}"]
+    alt_ports = [80, 443, 8080, 8443, 8000, 8888, 5000, 5001]
     for url in urls:
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=8, verify=False, allow_redirects=True)
-            resultados[url] = {
-                "Server": r.headers.get("Server", "Desconocido"),
-                "X-Powered-By": r.headers.get("X-Powered-By", "Desconocido"),
-                "Title": re.search(r"<title>(.*?)</title>", r.text, re.IGNORECASE).group(1) if "<title>" in r.text else "",
-                "Location": r.headers.get("Location", ""),
-                "Set-Cookie": r.headers.get("Set-Cookie", "")
-            }
-        except:
+        found = False
+        for port in [None] + alt_ports:
+            try:
+                proto = "https" if url.startswith("https") else "http"
+                if port and port not in [80, 443]:
+                    test_url = f"{proto}://{domain_or_ip}:{port}"
+                else:
+                    test_url = url
+                r = requests.get(test_url, headers=HEADERS, timeout=7, verify=False, allow_redirects=True)
+                server = r.headers.get("Server", "Desconocido")
+                powered = r.headers.get("X-Powered-By", "Desconocido")
+                title = re.search(r"<title>(.*?)</title>", r.text, re.IGNORECASE)
+                title = title.group(1) if title else ""
+                if (server and server != "Desconocido") or (powered and powered != "Desconocido") or title:
+                    resultados[url] = {
+                        "Server": server,
+                        "X-Powered-By": powered,
+                        "Title": title,
+                        "Location": r.headers.get("Location", ""),
+                        "Set-Cookie": r.headers.get("Set-Cookie", "")
+                    }
+                    found = True
+                    break
+            except:
+                continue
+        if not found:
             resultados[url] = {"Server": "Error", "X-Powered-By": "Error", "Title": "", "Location": "", "Set-Cookie": ""}
     return resultados
 
@@ -691,52 +781,60 @@ def banner_grabbing(ip, puerto):
         return ""
 
 def detectar_tecnologias(url):
+    # Si no detecta nada, prueba con puertos alternativos y HTML más profundo
     print(f"[*] Fingerprinting de tecnologías web en {url}...")
     tecnologias = set()
-    try:
-        r = requests.get(url, headers=random_headers(), timeout=8, verify=False, allow_redirects=True)
-        headers = r.headers
-        html = r.text
-        # Detección básica por headers
-        if "x-powered-by" in headers:
-            tecnologias.add(headers["x-powered-by"])
-        if "server" in headers:
-            tecnologias.add(headers["server"])
-        # Detección por HTML
-        if "wp-content" in html or "wordpress" in html.lower():
-            tecnologias.add("WordPress")
-        if "drupal" in html.lower():
-            tecnologias.add("Drupal")
-        if "joomla" in html.lower():
-            tecnologias.add("Joomla")
-        if "set-cookie" in headers and "PHPSESSID" in headers["set-cookie"]:
-            tecnologias.add("PHP")
-        if "X-AspNet-Version" in headers:
-            tecnologias.add("ASP.NET")
-        if "laravel_session" in headers.get("set-cookie", ""):
-            tecnologias.add("Laravel")
-        # ...puedes añadir más firmas...
-    except:
-        pass
+    ports = [None, 8080, 8443, 8000, 8888, 5000, 5001]
+    for port in ports:
+        try:
+            proto = "https" if url.startswith("https") else "http"
+            base = url.split('://')[1].split('/')[0]
+            test_url = f"{proto}://{base}:{port}/" if port else url
+            r = requests.get(test_url, headers=random_headers(), timeout=7, verify=False, allow_redirects=True)
+            headers = r.headers
+            html = r.text
+            if "x-powered-by" in headers:
+                tecnologias.add(headers["x-powered-by"])
+            if "server" in headers:
+                tecnologias.add(headers["server"])
+            if "wp-content" in html or "wordpress" in html.lower():
+                tecnologias.add("WordPress")
+            if "drupal" in html.lower():
+                tecnologias.add("Drupal")
+            if "joomla" in html.lower():
+                tecnologias.add("Joomla")
+            if "set-cookie" in headers and "PHPSESSID" in headers["set-cookie"]:
+                tecnologias.add("PHP")
+            if "X-AspNet-Version" in headers:
+                tecnologias.add("ASP.NET")
+            if "laravel_session" in headers.get("set-cookie", ""):
+                tecnologias.add("Laravel")
+            if re.search(r'<meta[^>]+generator[^>]+wordpress', html, re.I):
+                tecnologias.add("WordPress")
+            if re.search(r'<meta[^>]+generator[^>]+drupal', html, re.I):
+                tecnologias.add("Drupal")
+            if re.search(r'<meta[^>]+generator[^>]+joomla', html, re.I):
+                tecnologias.add("Joomla")
+            if "react" in html.lower():
+                tecnologias.add("ReactJS")
+            if "vue" in html.lower():
+                tecnologias.add("VueJS")
+            if "angular" in html.lower():
+                tecnologias.add("Angular")
+            if "django" in html.lower():
+                tecnologias.add("Django")
+            if "rails" in html.lower():
+                tecnologias.add("Ruby on Rails")
+            if "express" in html.lower():
+                tecnologias.add("ExpressJS")
+            if tecnologias:
+                break
+        except:
+            continue
     return list(tecnologias)
 
-def fuzz_directorios(domain_or_ip, wordlist=None):
-    print(f"[*] Fuzzing de directorios y archivos comunes en {domain_or_ip}...")
-    if wordlist is None:
-        wordlist = ["admin", "login", "config", ".env", "phpinfo.php", "backup", "test", "old", "dev", "api", "robots.txt"]
-    encontrados = []
-    for proto in ["http", "https"]:
-        for word in wordlist:
-            url = f"{proto}://{domain_or_ip}/{word}"
-            try:
-                r = requests.get(url, headers=random_headers(), timeout=4, verify=False, allow_redirects=False)
-                if r.status_code in [200, 301, 302, 403]:
-                    encontrados.append((url, r.status_code))
-            except:
-                continue
-    return encontrados
-
 def detectar_waf(domain_or_ip):
+    # Si no detecta, prueba con HTTPS y puertos alternativos
     print(f"[*] Detección de WAF/firewall en {domain_or_ip}...")
     wafs = {
         "cloudflare": ["cloudflare", "__cfduid", "cf-ray"],
@@ -748,18 +846,22 @@ def detectar_waf(domain_or_ip):
         "imperva": ["imperva"],
         "akamai": ["akamai"],
         "mod_security": ["mod_security"],
-        # ...puedes añadir más firmas...
     }
-    try:
-        r = requests.get(f"http://{domain_or_ip}", headers=random_headers(), timeout=5, verify=False)
-        headers = str(r.headers).lower()
-        html = r.text.lower()
-        for nombre, firmas in wafs.items():
-            for firma in firmas:
-                if firma in headers or firma in html:
-                    return nombre
-    except:
-        pass
+    ports = [None, 8080, 8443, 8000, 8888, 5000, 5001]
+    protos = ["http", "https"]
+    for proto in protos:
+        for port in ports:
+            try:
+                url = f"{proto}://{domain_or_ip}:{port}" if port else f"{proto}://{domain_or_ip}"
+                r = requests.get(url, headers=random_headers(), timeout=5, verify=False)
+                headers = str(r.headers).lower()
+                html = r.text.lower()
+                for nombre, firmas in wafs.items():
+                    for firma in firmas:
+                        if firma in headers or firma in html:
+                            return nombre
+            except:
+                continue
     return "No detectado"
 
 def buscar_leaks_github(domain):
@@ -803,6 +905,29 @@ def escanear_vulnerabilidades(ip, puertos):
             vulns.append(f"IIS 6.0 detectado (EOL) en puerto {puerto}")
         # ...puedes añadir más firmas de CVE...
     return vulns
+
+def encontrar_ip_real(dominio, candidatas, puertos=[80, 443, 8080, 8443, 8000, 8888, 5000, 5001]):
+    # Precisión: prueba HTTP/HTTPS, headers, fingerprint, y prioriza IPs con respuestas válidas/no genéricas
+    for ip in candidatas:
+        if intentar_bypass_http(dominio, ip):
+            return ip
+        headers = escanear_headers(ip)
+        for url, data in headers.items():
+            if data.get("Server") not in ["Desconocido", "Error", None] or data.get("Title"):
+                return ip
+        tec = detectar_tecnologias(f"http://{ip}")
+        if tec:
+            return ip
+        for port in puertos:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(1)
+                if s.connect_ex((ip, port)) == 0:
+                    s.close()
+                    return ip
+            except:
+                continue
+    return None
 
 def main():
     os.system("clear")
@@ -851,11 +976,9 @@ def main():
     # Escaneo de puertos y bypass HTTP
     ip_real = None
     puertos = []
-    for ip, abiertos in ip_puertos:
-        if intentar_bypass_http(dominio, ip):
-            ip_real = ip
-            puertos = abiertos
-            break
+    ip_real = encontrar_ip_real(dominio, [ip for ip, _ in ip_puertos])
+    if ip_real:
+        puertos = next((abiertos for ip, abiertos in ip_puertos if ip == ip_real), [])
     mostrar_barra_progreso(90)
 
     if not ip_real:
@@ -891,29 +1014,30 @@ def main():
     print("\n\n\033[1;92m[ RESULTADOS AVANZADOS ]\033[0;0m")
     print(f" Dominio objetivo    : {dominio}")
     print(f" IP Cloudflare       : {cf_ip}")
-    print(f" IP real detectada   : {info.get('ip')}")
-    print(f" PTR Hostname        : {info.get('hostname')}")
-    print(f" Organización        : {info.get('org')}")
-    print(f" ASN                 : {info.get('asn')}")
-    print(f" País                : {info.get('pais')}")
-    print(f" Ubicación           : {info.get('region')} - {info.get('ciudad')} ({info.get('ubicacion')})")
-    print(f" Zona horaria        : {info.get('zona')}")
-    print(f" Puertos abiertos    : {puertos}")
-    print(f" Server Header       : {headers.get('http://'+ip_real, {}).get('Server', '')}")
-    print(f" X-Powered-By        : {headers.get('http://'+ip_real, {}).get('X-Powered-By', '')}")
-    print(f" Título HTTP         : {headers.get('http://'+ip_real, {}).get('Title', '')}")
-    print(f" Server Header HTTPS : {headers.get('https://'+ip_real, {}).get('Server', '')}")
-    print(f" X-Powered-By HTTPS  : {headers.get('https://'+ip_real, {}).get('X-Powered-By', '')}")
-    print(f" Título HTTPS        : {headers.get('https://'+ip_real, {}).get('Title', '')}")
-    print(f" Tecnologías Web     : {tecnologias}")
-    print(f" WAF/Firewall        : {waf}")
-    print(f" Directorios/Archivos: {fuzz}")
-    print(f" Vulnerabilidades    : {vulns}")
-    print(f" Leaks GitHub        : {leaks_github}")
-    print(f" Leaks Pastebin      : {leaks_pastebin}")
+    print(f" IP real detectada   : {info.get('ip') or 'No disponible'}")
+    print(f" PTR Hostname        : {info.get('hostname') if info.get('hostname') and info.get('hostname') != 'PTR no disponible' else 'No disponible'}")
+    print(f" Organización        : {info.get('org') if info.get('org') and info.get('org') != 'Desconocido' else 'No disponible'}")
+    print(f" ASN                 : {info.get('asn') if info.get('asn') and info.get('asn') != 'N/A' else 'No disponible'}")
+    print(f" País                : {info.get('pais') if info.get('pais') and info.get('pais') != 'Desconocido' else 'No disponible'}")
+    ubicacion = f"{info.get('region', '')} - {info.get('ciudad', '')} ({info.get('ubicacion', '')})"
+    print(f" Ubicación           : {ubicacion if ubicacion.strip(' -()') else 'No disponible'}")
+    print(f" Zona horaria        : {info.get('zona') if info.get('zona') else 'No disponible'}")
+    print(f" Puertos abiertos    : {puertos if puertos else 'No disponible'}")
+    print(f" Server Header       : {headers.get('http://'+ip_real, {}).get('Server') if headers.get('http://'+ip_real, {}).get('Server') and headers.get('http://'+ip_real, {}).get('Server') != 'Desconocido' else 'No disponible'}")
+    print(f" X-Powered-By        : {headers.get('http://'+ip_real, {}).get('X-Powered-By') if headers.get('http://'+ip_real, {}).get('X-Powered-By') and headers.get('http://'+ip_real, {}).get('X-Powered-By') != 'Desconocido' else 'No disponible'}")
+    print(f" Título HTTP         : {headers.get('http://'+ip_real, {}).get('Title') if headers.get('http://'+ip_real, {}).get('Title') else 'No disponible'}")
+    print(f" Server Header HTTPS : {headers.get('https://'+ip_real, {}).get('Server') if headers.get('https://'+ip_real, {}).get('Server') and headers.get('https://'+ip_real, {}).get('Server') != 'Desconocido' else 'No disponible'}")
+    print(f" X-Powered-By HTTPS  : {headers.get('https://'+ip_real, {}).get('X-Powered-By') if headers.get('https://'+ip_real, {}).get('X-Powered-By') and headers.get('https://'+ip_real, {}).get('X-Powered-By') != 'Desconocido' else 'No disponible'}")
+    print(f" Título HTTPS        : {headers.get('https://'+ip_real, {}).get('Title') if headers.get('https://'+ip_real, {}).get('Title') else 'No disponible'}")
+    print(f" Tecnologías Web     : {tecnologias if tecnologias else 'No disponible'}")
+    print(f" WAF/Firewall        : {waf if waf and waf != 'No detectado' else 'No disponible'}")
+    print(f" Directorios/Archivos: {fuzz if fuzz else 'No disponible'}")
+    print(f" Vulnerabilidades    : {vulns if vulns else 'No disponible'}")
+    print(f" Leaks GitHub        : {leaks_github if leaks_github else 'No disponible'}")
+    print(f" Leaks Pastebin      : {leaks_pastebin if leaks_pastebin else 'No disponible'}")
     print("\n[ WHOIS ]")
     for k, v in whois_info.items():
-        print(f"  {k}: {v}")
+        print(f"  {k}: {v if v else 'No disponible'}")
 
 if __name__ == "__main__":
     main()
