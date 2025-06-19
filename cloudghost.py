@@ -929,6 +929,27 @@ def encontrar_ip_real(dominio, candidatas, puertos=[80, 443, 8080, 8443, 8000, 8
                 continue
     return None
 
+def fuzz_directorios(ip, paths=None):
+    print(f"[*] Fuzzing de directorios/archivos en {ip}...")
+    if paths is None:
+        paths = [
+            "admin", "login", "dashboard", "config", "config.php", "robots.txt",
+            "backup", "db", "test", "old", "dev", "api", ".env", ".git", "wp-admin",
+            "wp-login.php", "phpinfo.php", "server-status"
+        ]
+    encontrados = []
+    protos = ["http", "https"]
+    for proto in protos:
+        for path in paths:
+            url = f"{proto}://{ip}/{path}"
+            try:
+                r = requests.get(url, headers=random_headers(), timeout=5, verify=False, allow_redirects=True)
+                if r.status_code in [200, 301, 302, 403]:
+                    encontrados.append(f"{url} [{r.status_code}]")
+            except:
+                continue
+    return encontrados
+
 def main():
     os.system("clear")
     print(BANNER)
