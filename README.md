@@ -128,8 +128,8 @@ python3 cloudghost.py vulnerable.site
 ## 🎛️ Opciones de línea de comandos
 
 ```
-usage: cloudghost.py \[-h] \[-o OUTPUT] \[-t THREADS] \[--json ARCHIVO]
-                      \[--static-cf-ranges]
+usage: cloudghost.py [-h] [-o OUTPUT] [-t THREADS] [--json ARCHIVO]
+                      [--static-cf-ranges]
                       dominio
 
 positional arguments:
