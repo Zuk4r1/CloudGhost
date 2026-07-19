@@ -80,7 +80,9 @@ Esta versión se enfoca en **precisión** (menos falsos positivos) y **velocidad
 
 ## ⚙️ Requisitos
 
-**- API Keys válidas de (opcionales pero recomendadas — más keys = más fuentes activas):**
+Agrega tus **API KEYS** en el archivo **.env**
+
+**API Keys válidas (opcionales pero recomendadas — más keys = más fuentes activas):**
 
 * [Shodan.io](https://shodan.io) — habilita búsqueda por favicon
 * [ZoomEye](https://www.zoomeye.ai/)
