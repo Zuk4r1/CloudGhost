@@ -99,9 +99,9 @@ pip install -r requirements.txt
 
 **- Configurar API keys:**
 
+Edita .env y completa tus claves reales
 ```bash
-cp .env.example .env
-# edita .env y completa tus claves reales
+nano .env
 ```
 
 Las funciones que dependan de una key ausente simplemente se saltan esa fuente y continúan con las demás — CloudGhost nunca falla por falta de una key opcional.
