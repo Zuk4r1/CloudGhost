@@ -1,4 +1,6 @@
-requests 
+requests
 dnspython
 python-whois
-ipaddress
+python-dotenv
+urllib3
+mmh3
