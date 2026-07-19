@@ -40,7 +40,7 @@ DEFAULT_THREADS = 30
 
 BANNER = """
 \033[0;36m       __     
-\033[0;36m    __(  )_      \033[1;97m\033[4;37mCloudGhost Modo Ninja OSINT\033[0;0m \033[4;31mv3.6\033[0;0m
+\033[0;36m    __(  )_      \033[1;97m\033[4;37mCloudGhost Modo Ninja OSINT\033[0;0m \033[4;31mv4.0\033[0;0m
 \033[0;36m __(       )__   \033[0;0mAuthor:\033[4;31m@Zuk4r1
 \033[0;36m(_____________)  \033[0;0mDetecta IP real tras Cloudflare
 \033[0;36m  /⚡/⚡/⚡/    \033[0;0m
@@ -1075,9 +1075,9 @@ def parse_args():
     return parser.parse_args()
 
 def main():
-    args = parse_args()
     os.system("cls" if os.name == "nt" else "clear")
     print(BANNER)
+    args = parse_args()
 
     dominio = limpiar_url(args.dominio)
     print(f"\n[+] Escaneando: {dominio}")
