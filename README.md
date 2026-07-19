@@ -168,19 +168,19 @@ python3 cloudghost.py vulnerable.site --static-cf-ranges
 ## 🧪 Ejemplo de salida
 
 ```bash
-\[+] Escaneando: vulnerable.site
-\[#######-----------------------------] 22.00%
-\[\*] Extrayendo subdominios desde crt.sh, VirusTotal, SecurityTrails, OTX...
-\[\*] Sondeando 30 subdominios candidatos a no estar proxeados...
-    \[+] mail.vulnerable.site -> 45.67.89.101 (fuera de rangos Cloudflare)
-\[\*] Resolviendo 84 subdominios en paralelo (A, AAAA, MX, TXT, CNAME, NS, SOA, SRV, PTR)...
-\[##############################-----] 90.00%
+[+] Escaneando: vulnerable.site
+[#######-----------------------------] 22.00%
+[*] Extrayendo subdominios desde crt.sh, VirusTotal, SecurityTrails, OTX...
+[*] Sondeando 30 subdominios candidatos a no estar proxeados...
+[+] mail.vulnerable.site -> 45.67.89.101 (fuera de rangos Cloudflare)
+[*] Resolviendo 84 subdominios en paralelo (A, AAAA, MX, TXT, CNAME, NS, SOA, SRV, PTR)...
+[##############################-----] 90.00%
 
-\[ RANKING DE CANDIDATAS POR CONFIANZA ]
+[ RANKING DE CANDIDATAS POR CONFIANZA ]
   45.67.89.101     score=98   motivos: certificado TLS idéntico al del dominio, favicon idéntico, responde con Host header spoofed
   185.101.22.2     score=6    motivos: headers/título HTTP no genéricos
 
-\[ RESULTADOS AVANZADOS ]
+[ RESULTADOS AVANZADOS ]
  Dominio objetivo     : vulnerable.site
  IP Cloudflare        : 104.26.14.123
  IP real detectada    : 45.67.89.101
