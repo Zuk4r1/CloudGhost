@@ -138,7 +138,7 @@ positional arguments:
 options:
   -h, --help            Muestra esta ayuda y termina
   -o, --output OUTPUT   Archivo donde guardar las IPs candidatas
-                        (default: ips\_detectadas.txt)
+                        (default: ips_detectadas.txt)
   -t, --threads THREADS Hilos concurrentes para resolución DNS,
                         fuzzing y escaneo de puertos (default: 30)
   --json ARCHIVO        Guarda el resultado completo (info IP, headers,
