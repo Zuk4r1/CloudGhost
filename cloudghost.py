@@ -21,13 +21,11 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass  # python-dotenv es opcional; si no está, se usan solo variables de entorno del sistema
+    pass 
 
-# Silencia InsecureRequestWarning generado por verify=False (necesario para IPs sin SNI/cert válido)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # API KEYS — se cargan desde variables de entorno (.env o exportadas en el shell).
-# NUNCA hardcodees claves reales en el código fuente.
 ZOOMEYE_API_KEY = os.getenv("ZOOMEYE_API_KEY", "")
 SHODAN_API_KEY = os.getenv("SHODAN_API_KEY", "")
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN", "")
@@ -514,8 +512,7 @@ def buscar_subdominios_virustotal(domain):
     return []
 
 def buscar_subdominios_otx(domain):
-    # ThreatCrowd está inactiva desde ~2020 (siempre devuelve error/timeout).
-    # AlienVault OTX cubre el mismo caso de uso, sigue activa y no requiere API key.
+
     print("[*] Buscando subdominios en AlienVault OTX...")
     try:
         r = requests.get(
@@ -651,10 +648,8 @@ SUBDOMINIOS_NO_PROXEADOS = [
 ]
 
 def buscar_subdominios_no_proxeados(domain, rangos_cf=None, threads=DEFAULT_THREADS):
-    # Muchos servicios (correo, paneles de admin, DNS, backups) no pasan por el
     # proxy de Cloudflare aunque el sitio principal sí. Si alguno de estos
-    # subdominios resuelve a una IP que no es de Cloudflare, esa IP casi siempre
-    # vive en la misma red/hosting que el origen real -> pista de alto valor.
+    # subdominios resuelve a una IP que no es de Cloudflare, esa IP casi siempre es
     print(f"[*] Sondeando {len(SUBDOMINIOS_NO_PROXEADOS)} subdominios candidatos a no estar proxeados...")
     rangos_cf = rangos_cf if rangos_cf is not None else CLOUDFLARE_RANGES
     candidatos = [f"{s}.{domain}" for s in SUBDOMINIOS_NO_PROXEADOS]
@@ -682,9 +677,7 @@ def guardar_ips(ips, ruta="ips_detectadas.txt"):
             f.write(ip + "\n")
 
 def resolucion_dns_avanzada(subdominios, threads=DEFAULT_THREADS):
-    # Antes era una copia 1:1 de resolucion_dns_masiva con lifetime=7 en vez de 5.
-    # Se unifica reutilizando los mismos helpers paralelizados para no mantener
-    # dos implementaciones idénticas (y consultar cada subdominio dos veces por scan).
+
     return resolucion_dns_masiva(subdominios, threads=threads)
 
 def buscar_ips_historicas_securitytrails(domain):
@@ -961,7 +954,7 @@ def buscar_leaks_pastebin(domain):
 def escanear_vulnerabilidades(ip, puertos):
     print(f"[*] Escaneo rápido de vulnerabilidades conocidas en {ip}...")
     vulns = []
-    # Ejemplo: detectar SMBv1, versiones inseguras de HTTP, etc.
+
     for puerto in puertos:
         banner = banner_grabbing(ip, puerto)
         if "smb" in banner.lower() and "version: 1" in banner.lower():
@@ -975,11 +968,7 @@ def escanear_vulnerabilidades(ip, puertos):
 
 def evaluar_candidatas(dominio, candidatas, fp_referencia=None, favicon_hash_ref=None,
                         puertos=[80, 443, 8080, 8443, 8000, 8888, 5000, 5001]):
-    # Antes: "la primera IP que responde con 200/403/401 gana" -> muchos falsos
-    # positivos, cualquier servidor random en el rango contestaba y se aceptaba.
-    # Ahora: cada candidata se puntúa con varias señales independientes y se
-    # devuelve el ranking completo, no solo una IP. La de mayor score es la más
-    # probable de ser el origen real.
+
     resultados = []
     for ip in candidatas:
         score = 0
@@ -1029,8 +1018,7 @@ def evaluar_candidatas(dominio, candidatas, fp_referencia=None, favicon_hash_ref
     return resultados
 
 def encontrar_ip_real(dominio, candidatas, puertos=[80, 443, 8080, 8443, 8000, 8888, 5000, 5001]):
-    # Wrapper simple sobre evaluar_candidatas para mantener compatibilidad con
-    # código que solo necesita "la mejor IP", sin certificado/favicon de referencia.
+
     ranking = evaluar_candidatas(dominio, candidatas, puertos=puertos)
     return ranking[0]["ip"] if ranking else None
 
@@ -1092,7 +1080,6 @@ def main():
 
     rangos_cf = CLOUDFLARE_RANGES if args.static_cf_ranges else obtener_rangos_cloudflare_oficiales()
 
-    # crt.sh mejorado
     sub1, ips_crtsh = buscar_certificados_crtsh(dominio)
     sub2 = buscar_en_wayback(dominio)
     sub3 = buscar_subdominios_virustotal(dominio)
@@ -1207,8 +1194,6 @@ def main():
     for k, v in whois_info.items():
         print(f"  {k}: {v if v else 'No disponible'}")
 
-    # Antes esta función existía pero nunca se llamaba: las IPs candidatas
-    # nunca quedaban guardadas pese a lo que indicaba el README.
     guardar_ips(candidatas, args.output)
     print(f"\n[*] {len(candidatas)} IP(s) candidata(s) guardadas en: {args.output}")
 
