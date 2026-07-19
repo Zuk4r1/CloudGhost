@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import os
 import sys
+import argparse
 import requests
 import socket
 import dns.resolver
 from urllib.parse import urlparse
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import time
 import ipaddress
@@ -13,16 +15,28 @@ import re
 import whois
 import threading
 import random
+import urllib3
 
-# API KEYS (coloca aquí tus claves)
-ZOOMEYE_API_KEY = "API_KEY"
-SHODAN_API_KEY = "API_KEY"
-IPINFO_TOKEN = "API_KEY"
-SECURITYTRAILS_API_KEY = "API_KEY"
-VIRUSTOTAL_API_KEY = "API_KEY"
-WORKERS_AI_USER_ID = "API_KEY"
-WORKERS_AI_API_KEY = "API_KEY"
-# ...puedes agregar aquí más claves si usas otros servicios...
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv es opcional; si no está, se usan solo variables de entorno del sistema
+
+# Silencia InsecureRequestWarning generado por verify=False (necesario para IPs sin SNI/cert válido)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# API KEYS — se cargan desde variables de entorno (.env o exportadas en el shell).
+# NUNCA hardcodees claves reales en el código fuente.
+ZOOMEYE_API_KEY = os.getenv("ZOOMEYE_API_KEY", "")
+SHODAN_API_KEY = os.getenv("SHODAN_API_KEY", "")
+IPINFO_TOKEN = os.getenv("IPINFO_TOKEN", "")
+SECURITYTRAILS_API_KEY = os.getenv("SECURITYTRAILS_API_KEY", "")
+VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY", "")
+WORKERS_AI_USER_ID = os.getenv("WORKERS_AI_USER_ID", "")
+WORKERS_AI_API_KEY = os.getenv("WORKERS_AI_API_KEY", "")
+
+DEFAULT_THREADS = 30
 
 BANNER = """
 \033[0;36m       __     
@@ -112,23 +126,7 @@ CLOUDFLARE_RANGES = [
     "2803:f800::/32",
     "2a06:98c0::/29",
     "2a09:bac0::/29",
-    "2a09:bac1::/29",
-    "2a09:bac2::/31",
-    "2a09:bac4::/30",
-    "2a09:bac8::/29",
-    "2a09:bac10::/28",
-    "2a09:bac20::/27",
-    "2a09:bac40::/26",
-    "2a09:bac80::/25",
-    "2a09:bac100::/24",
-    "2a09:bac200::/23",
-    "2a09:bac400::/22",
-    "2a09:bac800::/21",
-    "2a09:bac1000::/20",
-    "2a09:bac2000::/19",
-    "2a09:bac4000::/18",
-    "2a09:bac8000::/17",
-    "2a09:bac10000::/16",
+    "2a09:bac0::/28",
     "2c0f:f248::/32",
     # Rango adicional de Cloudflare IPv6 (RIPE/ARIN y otras fuentes públicas)
     "2a12:4940::/29",
@@ -230,62 +228,61 @@ def buscar_en_wayback(domain):
     except:
         return []
 
-def resolucion_dns_masiva(subdominios):
-    print("[*] Resolviendo subdominios (A, AAAA, MX, TXT, CNAME, NS, SOA, SRV, PTR)...")
-    ips = set()
-    hosts = set()
-    tipos = ['A', 'AAAA', 'MX', 'TXT', 'CNAME', 'NS', 'SOA', 'SRV', 'PTR']
-    for sub in subdominios:
-        for rtype in tipos:
-            try:
-                answers = dns.resolver.resolve(sub, rtype, lifetime=5)
-                for rdata in answers:
-                    if rtype == 'A':
-                        ips.add(rdata.address)
-                    elif rtype == 'AAAA':
-                        ips.add(rdata.address)
-                    elif rtype == 'MX':
-                        hosts.add(str(rdata.exchange).rstrip('.'))
-                    elif rtype == 'CNAME':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'NS':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'SOA':
-                        hosts.add(str(rdata.mname).rstrip('.'))
-                    elif rtype == 'SRV':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'PTR':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'TXT':
-                        txt = str(rdata)
-                        # Busca IPs y dominios en TXT
-                        for part in txt.split():
-                            if part.count('.') == 3 and re.match(r'^\d{1,3}(\.\d{1,3}){3}$', part.strip('"')):
-                                ips.add(part.strip('"'))
-                            elif '.' in part:
-                                hosts.add(part.strip('"'))
-            except Exception:
-                continue
-    # Intenta resolver hosts adicionales encontrados (más agresivo y recursivo)
-    for host in list(hosts):
+def _resolver_un_subdominio(sub, tipos):
+    ips_local, hosts_local = set(), set()
+    for rtype in tipos:
         try:
-            ip_list = socket.gethostbyname_ex(host)[2]
-            for ip in ip_list:
-                ips.add(ip)
-        except:
+            answers = dns.resolver.resolve(sub, rtype, lifetime=5)
+            for rdata in answers:
+                if rtype in ('A', 'AAAA'):
+                    ips_local.add(rdata.address)
+                elif rtype == 'MX':
+                    hosts_local.add(str(rdata.exchange).rstrip('.'))
+                elif rtype in ('CNAME', 'NS', 'SRV', 'PTR'):
+                    hosts_local.add(str(rdata.target).rstrip('.'))
+                elif rtype == 'SOA':
+                    hosts_local.add(str(rdata.mname).rstrip('.'))
+                elif rtype == 'TXT':
+                    for part in str(rdata).split():
+                        clean = part.strip('"')
+                        if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', clean):
+                            ips_local.add(clean)
+                        elif '.' in part:
+                            hosts_local.add(clean)
+        except dns.exception.DNSException:
             continue
-        # Intenta resolver CNAMEs y MXs como hosts también
-        try:
-            cname_answers = dns.resolver.resolve(host, 'CNAME')
-            for cname in cname_answers:
-                cname_host = str(cname.target).rstrip('.')
-                try:
-                    ip_cname = socket.gethostbyname(cname_host)
-                    ips.add(ip_cname)
-                except:
-                    pass
-        except:
-            pass
+    return ips_local, hosts_local
+
+def _resolver_host_adicional(host):
+    ips_local = set()
+    try:
+        ips_local.update(socket.gethostbyname_ex(host)[2])
+    except socket.error:
+        pass
+    try:
+        for cname in dns.resolver.resolve(host, 'CNAME', lifetime=5):
+            try:
+                ips_local.add(socket.gethostbyname(str(cname.target).rstrip('.')))
+            except socket.error:
+                pass
+    except dns.exception.DNSException:
+        pass
+    return ips_local
+
+def resolucion_dns_masiva(subdominios, threads=DEFAULT_THREADS):
+    print(f"[*] Resolviendo {len(subdominios)} subdominios en paralelo (A, AAAA, MX, TXT, CNAME, NS, SOA, SRV, PTR)...")
+    ips, hosts = set(), set()
+    tipos = ['A', 'AAAA', 'MX', 'TXT', 'CNAME', 'NS', 'SOA', 'SRV', 'PTR']
+    with ThreadPoolExecutor(max_workers=threads) as ex:
+        futuros = {ex.submit(_resolver_un_subdominio, sub, tipos): sub for sub in subdominios}
+        for f in as_completed(futuros):
+            ips_local, hosts_local = f.result()
+            ips.update(ips_local)
+            hosts.update(hosts_local)
+    # Resuelve hosts adicionales descubiertos (CNAME/MX/NS/etc.), también en paralelo
+    with ThreadPoolExecutor(max_workers=threads) as ex:
+        for f in as_completed({ex.submit(_resolver_host_adicional, h): h for h in hosts}):
+            ips.update(f.result())
     return list(ips)
 
 def consultar_shodan(domain):
@@ -455,19 +452,37 @@ def escanear_headers(domain_or_ip):
             resultados[url] = {"Server": "Error", "X-Powered-By": "Error", "Title": "", "Location": "", "Set-Cookie": ""}
     return resultados
 
-def ip_in_cloudflare(ip):
+def obtener_rangos_cloudflare_oficiales():
+    # Trae la lista oficial y siempre-actualizada de Cloudflare. Si falla (sin red,
+    # timeout, cambio de endpoint), cae de vuelta al listado estático como respaldo.
     try:
-        # Validar que ip no sea None, vacía, ni un hostname
-        if not ip or not isinstance(ip, str):
-            return False
-        # Solo aceptar IPv4 o IPv6 válidas
+        v4 = requests.get("https://www.cloudflare.com/ips-v4", timeout=8).text.split()
+        v6 = requests.get("https://www.cloudflare.com/ips-v6", timeout=8).text.split()
+        rangos = [r for r in (v4 + v6) if r]
+        if rangos:
+            return rangos
+    except requests.RequestException:
+        pass
+    return CLOUDFLARE_RANGES
+
+def ip_in_cloudflare(ip, rangos=None):
+    # rangos=None usa CLOUDFLARE_RANGES (estático); pasar el resultado de
+    # obtener_rangos_cloudflare_oficiales() para usar la lista siempre-actualizada.
+    if rangos is None:
+        rangos = CLOUDFLARE_RANGES
+    if not ip or not isinstance(ip, str):
+        return False
+    try:
         ip_obj = ipaddress.ip_address(ip)
-        for net in CLOUDFLARE_RANGES:
+    except ValueError:
+        return False
+    for net in rangos:
+        try:
             if ip_obj in ipaddress.ip_network(net):
                 return True
-    except Exception:
-        # Si no es una IP válida, no está en Cloudflare
-        return False
+        except ValueError:
+            # Una entrada corrupta en la lista ya no aborta el resto del chequeo
+            continue
     return False
 
 def buscar_subdominios_securitytrails(domain):
@@ -498,27 +513,39 @@ def buscar_subdominios_virustotal(domain):
         pass
     return []
 
-def buscar_subdominios_threatcrowd(domain):
-    print("[*] Buscando subdominios en ThreatCrowd...")
+def buscar_subdominios_otx(domain):
+    # ThreatCrowd está inactiva desde ~2020 (siempre devuelve error/timeout).
+    # AlienVault OTX cubre el mismo caso de uso, sigue activa y no requiere API key.
+    print("[*] Buscando subdominios en AlienVault OTX...")
     try:
-        r = requests.get(f"https://www.threatcrowd.org/searchApi/v2/domain/report/?domain={domain}")
-        data = r.json()
-        return data.get("subdomains", [])
-    except:
-        return []
+        r = requests.get(
+            f"https://otx.alienvault.com/api/v1/indicators/domain/{domain}/passive_dns",
+            timeout=10
+        )
+        if r.status_code == 200:
+            data = r.json()
+            hosts = set()
+            for entry in data.get("passive_dns", []):
+                hostname = entry.get("hostname")
+                if hostname and domain in hostname:
+                    hosts.add(hostname)
+            return list(hosts)
+    except (requests.RequestException, ValueError):
+        pass
+    return []
 
-def escanear_puertos(ip, puertos=[80, 443, 8080, 8443, 22, 21, 25]):
-    abiertos = []
-    for puerto in puertos:
+def escanear_puertos(ip, puertos=[80, 443, 8080, 8443, 22, 21, 25], threads=DEFAULT_THREADS):
+    def probar(puerto):
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(1)
-            if s.connect_ex((ip, puerto)) == 0:
-                abiertos.append(puerto)
-            s.close()
-        except:
-            continue
-    return abiertos
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                if s.connect_ex((ip, puerto)) == 0:
+                    return puerto
+        except OSError:
+            pass
+        return None
+    with ThreadPoolExecutor(max_workers=min(threads, len(puertos) or 1)) as ex:
+        return [p for p in ex.map(probar, puertos) if p is not None]
 
 def intentar_bypass_http(domain, ip):
     print(f"[*] Probando bypass HTTP/HTTPS agresivo a {ip}...")
@@ -564,68 +591,101 @@ def intentar_bypass_http(domain, ip):
         pass
     return False
 
-def guardar_ips(ips):
-    with open("ips_detectadas.txt", "w") as f:
+def obtener_fingerprint_certificado(host_conexion, sni, puerto=443, timeout=6):
+    # Conecta por TCP a host_conexion:puerto pero envía SNI=sni (server_hostname),
+    # y devuelve el SHA-256 del certificado de hoja servido. Esto permite:
+    #   - Sacar el cert "de referencia" conectando al dominio real (vía Cloudflare)
+    #   - Sacar el cert de cada IP candidata pidiendo el mismo SNI
+    # Si ambos SHA-256 coinciden, la IP candidata sirve el certificado real del
+    # sitio -> señal de altísima confianza de que es el origen (técnica usada por
+    # CloudFlair y herramientas similares).
+    import ssl, hashlib
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((host_conexion, puerto), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=sni) as ssock:
+                der_cert = ssock.getpeercert(binary_form=True)
+                return hashlib.sha256(der_cert).hexdigest()
+    except (socket.error, ssl.SSLError, OSError):
+        return None
+
+def obtener_favicon_hash(url, timeout=7):
+    # Hash estilo Shodan (mmh3 de 32 bits sobre el favicon en base64) para poder
+    # buscar directamente "http.favicon.hash:<hash>" en Shodan y encontrar otros
+    # hosts (potencialmente el origen) sirviendo el mismo favicon.
+    import base64
+    import mmh3
+    try:
+        r = requests.get(url.rstrip('/') + "/favicon.ico", headers=random_headers(),
+                          timeout=timeout, verify=False, allow_redirects=True)
+        if r.status_code == 200 and r.content:
+            b64 = base64.encodebytes(r.content)
+            return mmh3.hash(b64)
+    except requests.RequestException:
+        pass
+    return None
+
+def buscar_shodan_por_favicon(favicon_hash):
+    if not SHODAN_API_KEY or favicon_hash is None:
+        return []
+    print(f"[*] Buscando en Shodan hosts con el mismo favicon (hash={favicon_hash})...")
+    try:
+        r = requests.get(
+            "https://api.shodan.io/shodan/host/search",
+            params={"key": SHODAN_API_KEY, "query": f"http.favicon.hash:{favicon_hash}"},
+            timeout=15
+        )
+        if r.status_code == 200:
+            return [m["ip_str"] for m in r.json().get("matches", []) if m.get("ip_str")]
+    except requests.RequestException:
+        pass
+    return []
+
+SUBDOMINIOS_NO_PROXEADOS = [
+    "direct", "origin", "origin-www", "cpanel", "webdisk", "webmail", "mail",
+    "autodiscover", "autoconfig", "ns1", "ns2", "smtp", "pop", "imap", "ftp",
+    "sftp", "vpn", "remote", "sql", "db", "database", "dev", "staging", "old",
+    "backup", "test", "demo", "portal", "direct-connect", "server", "host",
+]
+
+def buscar_subdominios_no_proxeados(domain, rangos_cf=None, threads=DEFAULT_THREADS):
+    # Muchos servicios (correo, paneles de admin, DNS, backups) no pasan por el
+    # proxy de Cloudflare aunque el sitio principal sí. Si alguno de estos
+    # subdominios resuelve a una IP que no es de Cloudflare, esa IP casi siempre
+    # vive en la misma red/hosting que el origen real -> pista de alto valor.
+    print(f"[*] Sondeando {len(SUBDOMINIOS_NO_PROXEADOS)} subdominios candidatos a no estar proxeados...")
+    rangos_cf = rangos_cf if rangos_cf is not None else CLOUDFLARE_RANGES
+    candidatos = [f"{s}.{domain}" for s in SUBDOMINIOS_NO_PROXEADOS]
+
+    def resolver(sub):
+        try:
+            ip = socket.gethostbyname(sub)
+            if not ip_in_cloudflare(ip, rangos_cf):
+                return (sub, ip)
+        except socket.error:
+            pass
+        return None
+
+    hallazgos = []
+    with ThreadPoolExecutor(max_workers=threads) as ex:
+        for res in ex.map(resolver, candidatos):
+            if res:
+                hallazgos.append(res)
+                print(f"    [+] {res[0]} -> {res[1]} (fuera de rangos Cloudflare)")
+    return hallazgos
+
+def guardar_ips(ips, ruta="ips_detectadas.txt"):
+    with open(ruta, "w") as f:
         for ip in ips:
             f.write(ip + "\n")
 
-def resolucion_dns_avanzada(subdominios):
-    print("[*] Resolución DNS avanzada (A, AAAA, MX, TXT, CNAME, NS, SOA, SRV, PTR, agresivo)...")
-    ips = set()
-    hosts = set()
-    tipos = ['A', 'AAAA', 'MX', 'TXT', 'CNAME', 'NS', 'SOA', 'SRV', 'PTR']
-    for sub in subdominios:
-        for rtype in tipos:
-            try:
-                answers = dns.resolver.resolve(sub, rtype, lifetime=7)
-                for rdata in answers:
-                    if rtype == 'A':
-                        ips.add(rdata.address)
-                    elif rtype == 'AAAA':
-                        ips.add(rdata.address)
-                    elif rtype == 'MX':
-                        hosts.add(str(rdata.exchange).rstrip('.'))
-                    elif rtype == 'CNAME':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'NS':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'SOA':
-                        hosts.add(str(rdata.mname).rstrip('.'))
-                    elif rtype == 'SRV':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'PTR':
-                        hosts.add(str(rdata.target).rstrip('.'))
-                    elif rtype == 'TXT':
-                        txt = str(rdata)
-                        # Busca IPs y dominios en TXT
-                        for part in txt.split():
-                            if part.count('.') == 3 and re.match(r'^\d{1,3}(\.\d{1,3}){3}$', part.strip('"')):
-                                ips.add(part.strip('"'))
-                            elif '.' in part:
-                                hosts.add(part.strip('"'))
-            except Exception:
-                continue
-    # Intenta resolver hosts adicionales encontrados (más agresivo y recursivo)
-    for host in list(hosts):
-        try:
-            ip_list = socket.gethostbyname_ex(host)[2]
-            for ip in ip_list:
-                ips.add(ip)
-        except:
-            continue
-        # Intenta resolver CNAMEs y MXs como hosts también
-        try:
-            cname_answers = dns.resolver.resolve(host, 'CNAME')
-            for cname in cname_answers:
-                cname_host = str(cname.target).rstrip('.')
-                try:
-                    ip_cname = socket.gethostbyname(cname_host)
-                    ips.add(ip_cname)
-                except:
-                    pass
-        except:
-            pass
-    return list(ips)
+def resolucion_dns_avanzada(subdominios, threads=DEFAULT_THREADS):
+    # Antes era una copia 1:1 de resolucion_dns_masiva con lifetime=7 en vez de 5.
+    # Se unifica reutilizando los mismos helpers paralelizados para no mantener
+    # dos implementaciones idénticas (y consultar cada subdominio dos veces por scan).
+    return resolucion_dns_masiva(subdominios, threads=threads)
 
 def buscar_ips_historicas_securitytrails(domain):
     print("[*] Buscando IPs históricas en SecurityTrails...")
@@ -731,8 +791,8 @@ def consultar_workers_ai(query, model="llama-2-7b-chat-fp16"):
     except Exception as e:
         return f"Error Workers AI: {e}"
 
-def filtrar_ips_cloudflare(ips):
-    return [ip for ip in ips if not ip_in_cloudflare(ip)]
+def filtrar_ips_cloudflare(ips, rangos=None):
+    return [ip for ip in ips if not ip_in_cloudflare(ip, rangos)]
 
 def random_headers():
     headers = HEADERS.copy()
@@ -878,16 +938,23 @@ def buscar_leaks_github(domain):
     return leaks
 
 def buscar_leaks_pastebin(domain):
-    print(f"[*] Buscando posibles leaks en Pastebin para {domain}...")
+    # AVISO: el endpoint de scraping de Pastebin requiere una cuenta Pro con IP
+    # en whitelist desde 2019. Sin eso, esta llamada siempre devuelve 403.
+    # Se deja implementada por si el usuario tiene acceso Pro; si no, devuelve
+    # vacío de forma explícita en vez de fallar en silencio como antes.
+    print(f"[*] Buscando posibles leaks en Pastebin para {domain} (requiere cuenta Pro)...")
     leaks = []
     try:
-        r = requests.get(f"https://scrape.pastebin.com/api_scraping.php?limit=50", timeout=10)
+        r = requests.get("https://scrape.pastebin.com/api_scraping.php?limit=50", timeout=10)
+        if r.status_code == 403:
+            print("    [!] Pastebin devolvió 403 — necesitas cuenta Pro con IP en whitelist para esta fuente.")
+            return leaks
         if r.status_code == 200:
             data = r.json()
             for item in data:
                 if domain in item.get("title", "") or domain in item.get("key", ""):
                     leaks.append(item.get("scrape_url"))
-    except:
+    except (requests.RequestException, ValueError):
         pass
     return leaks
 
@@ -906,101 +973,181 @@ def escanear_vulnerabilidades(ip, puertos):
         # ...puedes añadir más firmas de CVE...
     return vulns
 
-def encontrar_ip_real(dominio, candidatas, puertos=[80, 443, 8080, 8443, 8000, 8888, 5000, 5001]):
-    # Precisión: prueba HTTP/HTTPS, headers, fingerprint, y prioriza IPs con respuestas válidas/no genéricas
+def evaluar_candidatas(dominio, candidatas, fp_referencia=None, favicon_hash_ref=None,
+                        puertos=[80, 443, 8080, 8443, 8000, 8888, 5000, 5001]):
+    # Antes: "la primera IP que responde con 200/403/401 gana" -> muchos falsos
+    # positivos, cualquier servidor random en el rango contestaba y se aceptaba.
+    # Ahora: cada candidata se puntúa con varias señales independientes y se
+    # devuelve el ranking completo, no solo una IP. La de mayor score es la más
+    # probable de ser el origen real.
+    resultados = []
     for ip in candidatas:
+        score = 0
+        motivos = []
+
+        if fp_referencia:
+            fp_candidata = obtener_fingerprint_certificado(ip, dominio)
+            if fp_candidata and fp_candidata == fp_referencia:
+                score += 60
+                motivos.append("certificado TLS idéntico al del dominio")
+
+        if favicon_hash_ref is not None:
+            fh = obtener_favicon_hash(f"http://{ip}")
+            if fh == favicon_hash_ref:
+                score += 25
+                motivos.append("favicon idéntico")
+
         if intentar_bypass_http(dominio, ip):
-            return ip
+            score += 10
+            motivos.append("responde con Host header spoofed")
+
         headers = escanear_headers(ip)
         for url, data in headers.items():
             if data.get("Server") not in ["Desconocido", "Error", None] or data.get("Title"):
-                return ip
-        tec = detectar_tecnologias(f"http://{ip}")
-        if tec:
-            return ip
+                score += 5
+                motivos.append("headers/título HTTP no genéricos")
+                break
+
+        if detectar_tecnologias(f"http://{ip}"):
+            score += 3
+            motivos.append("tecnologías web detectadas")
+
         for port in puertos:
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(1)
-                if s.connect_ex((ip, port)) == 0:
-                    s.close()
-                    return ip
-            except:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(1)
+                    if s.connect_ex((ip, port)) == 0:
+                        score += 1
+                        break
+            except OSError:
                 continue
-    return None
 
-def fuzz_directorios(ip, paths=None):
-    print(f"[*] Fuzzing de directorios/archivos en {ip}...")
+        if score > 0:
+            resultados.append({"ip": ip, "score": score, "motivos": motivos})
+
+    resultados.sort(key=lambda r: r["score"], reverse=True)
+    return resultados
+
+def encontrar_ip_real(dominio, candidatas, puertos=[80, 443, 8080, 8443, 8000, 8888, 5000, 5001]):
+    # Wrapper simple sobre evaluar_candidatas para mantener compatibilidad con
+    # código que solo necesita "la mejor IP", sin certificado/favicon de referencia.
+    ranking = evaluar_candidatas(dominio, candidatas, puertos=puertos)
+    return ranking[0]["ip"] if ranking else None
+
+def fuzz_directorios(ip, paths=None, threads=DEFAULT_THREADS):
     if paths is None:
         paths = [
             "admin", "login", "dashboard", "config", "config.php", "robots.txt",
             "backup", "db", "test", "old", "dev", "api", ".env", ".git", "wp-admin",
             "wp-login.php", "phpinfo.php", "server-status"
         ]
+    urls = [f"{proto}://{ip}/{path}" for proto in ("http", "https") for path in paths]
+    print(f"[*] Fuzzing de {len(urls)} rutas en {ip} (paralelo)...")
     encontrados = []
-    protos = ["http", "https"]
-    for proto in protos:
-        for path in paths:
-            url = f"{proto}://{ip}/{path}"
-            try:
-                r = requests.get(url, headers=random_headers(), timeout=5, verify=False, allow_redirects=True)
-                if r.status_code in [200, 301, 302, 403]:
-                    encontrados.append(f"{url} [{r.status_code}]")
-            except:
-                continue
+    def probar(url):
+        try:
+            r = requests.get(url, headers=random_headers(), timeout=5, verify=False, allow_redirects=True)
+            if r.status_code in (200, 301, 302, 403):
+                return f"{url} [{r.status_code}]"
+        except requests.RequestException:
+            pass
+        return None
+    with ThreadPoolExecutor(max_workers=threads) as ex:
+        for res in ex.map(probar, urls):
+            if res:
+                encontrados.append(res)
     return encontrados
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        prog="cloudghost.py",
+        description="CloudGhost - OSINT ofensivo para detectar la IP real tras Cloudflare/WAF."
+    )
+    parser.add_argument("dominio", help="Dominio objetivo, ej: vulnerable.site")
+    parser.add_argument("-o", "--output", default="ips_detectadas.txt",
+                         help="Archivo donde guardar las IPs candidatas (default: ips_detectadas.txt)")
+    parser.add_argument("-t", "--threads", type=int, default=DEFAULT_THREADS,
+                         help=f"Hilos concurrentes para resolución/fuzzing/escaneo (default: {DEFAULT_THREADS})")
+    parser.add_argument("--json", metavar="ARCHIVO",
+                         help="Guarda además el resultado completo en formato JSON en el archivo indicado")
+    parser.add_argument("--static-cf-ranges", action="store_true",
+                         help="Usa la lista estática de rangos Cloudflare embebida en vez de descargar la oficial")
+    return parser.parse_args()
+
 def main():
-    os.system("clear")
+    args = parse_args()
+    os.system("cls" if os.name == "nt" else "clear")
     print(BANNER)
 
-    if len(sys.argv) != 2:
-        print("Uso: python3 cloudghost.py <dominio.com>")
-        sys.exit(1)
-
-    dominio = limpiar_url(sys.argv[1])
+    dominio = limpiar_url(args.dominio)
     print(f"\n[+] Escaneando: {dominio}")
     mostrar_barra_progreso(5)
 
-    cf_ip = socket.gethostbyname(dominio)
+    try:
+        cf_ip = socket.gethostbyname(dominio)
+    except socket.gaierror:
+        print(f"\n[!] No se pudo resolver {dominio}. ¿Está bien escrito el dominio?")
+        sys.exit(1)
     mostrar_barra_progreso(10)
+
+    rangos_cf = CLOUDFLARE_RANGES if args.static_cf_ranges else obtener_rangos_cloudflare_oficiales()
 
     # crt.sh mejorado
     sub1, ips_crtsh = buscar_certificados_crtsh(dominio)
     sub2 = buscar_en_wayback(dominio)
     sub3 = buscar_subdominios_virustotal(dominio)
-    sub4 = buscar_subdominios_threatcrowd(dominio)
-    subdominios = list(set(sub1 + sub2 + sub3 + sub4))
+    sub4 = buscar_subdominios_otx(dominio)
+    sub5 = buscar_subdominios_securitytrails(dominio)  # antes definida pero nunca llamada
+    subdominios = list(set(sub1 + sub2 + sub3 + sub4 + sub5))
     mostrar_barra_progreso(20)
 
-    # DNS masiva mejorada
-    ips1 = resolucion_dns_masiva(subdominios)
+    # DNS masiva (paralela) + fuentes externas
+    ips1 = resolucion_dns_masiva(subdominios, threads=args.threads)
     ips2 = consultar_shodan(dominio)
     ips3 = consultar_zoom_eye(dominio)
-    ips4 = resolucion_dns_avanzada(subdominios)
     ips5 = buscar_ips_historicas_viewdns(dominio)
-    todas = list(set(ips1 + ips2 + ips3 + ips4 + ips5 + ips_crtsh))
-    mostrar_barra_progreso(50)
+    ips6 = buscar_ips_historicas_securitytrails(dominio)  # antes definida pero nunca llamada
 
-    candidatas = filtrar_ips_cloudflare(todas)
+    # Subdominios comúnmente NO proxeados (mail, cpanel, ns1...) -> pista de alto valor
+    no_proxeados = buscar_subdominios_no_proxeados(dominio, rangos_cf, threads=args.threads)
+    ips7 = [ip for _, ip in no_proxeados]
+
+    todas = list(set(ips1 + ips2 + ips3 + ips5 + ips6 + ips7 + ips_crtsh))
+    mostrar_barra_progreso(45)
+
+    candidatas = filtrar_ips_cloudflare(todas, rangos_cf)
+    mostrar_barra_progreso(55)
+
+    # Certificado y favicon de referencia del dominio real (vía Cloudflare) para
+    # poder comparar contra cada IP candidata más adelante
+    fp_referencia = obtener_fingerprint_certificado(dominio, dominio)
+    favicon_ref = obtener_favicon_hash(f"https://{dominio}")
     mostrar_barra_progreso(60)
 
     # Priorización por puertos abiertos (ahora avanzado)
     ip_puertos = []
     for ip in candidatas:
-        abiertos = escanear_puertos_avanzado(ip)
+        abiertos = escanear_puertos_avanzado(ip, threads=args.threads)
         if abiertos:
             ip_puertos.append((ip, abiertos))
     ip_puertos.sort(key=lambda x: len(x[1]), reverse=True)
     mostrar_barra_progreso(70)
 
-    # Escaneo de puertos y bypass HTTP
-    ip_real = None
+    # Scoring por confianza: certificado TLS + favicon + headers + tecnologías + puertos
+    ranking = evaluar_candidatas(
+        dominio, [ip for ip, _ in ip_puertos],
+        fp_referencia=fp_referencia, favicon_hash_ref=favicon_ref
+    )
+    ip_real = ranking[0]["ip"] if ranking else None
     puertos = []
-    ip_real = encontrar_ip_real(dominio, [ip for ip, _ in ip_puertos])
     if ip_real:
         puertos = next((abiertos for ip, abiertos in ip_puertos if ip == ip_real), [])
     mostrar_barra_progreso(90)
+
+    if ranking:
+        print("\n\n[ RANKING DE CANDIDATAS POR CONFIANZA ]")
+        for r in ranking[:5]:
+            print(f"  {r['ip']:<16} score={r['score']:<4} motivos: {', '.join(r['motivos']) or 'ninguno'}")
 
     if not ip_real:
         print("\n\n[!] No se encontró una IP real fuera de Cloudflare con bypass HTTP.")
@@ -1020,7 +1167,7 @@ def main():
     tecnologias = detectar_tecnologias(f"http://{ip_real}")
 
     # Fuzzing de directorios
-    fuzz = fuzz_directorios(ip_real)
+    fuzz = fuzz_directorios(ip_real, threads=args.threads)
 
     # Detección de WAF/firewall
     waf = detectar_waf(ip_real)
@@ -1059,6 +1206,32 @@ def main():
     print("\n[ WHOIS ]")
     for k, v in whois_info.items():
         print(f"  {k}: {v if v else 'No disponible'}")
+
+    # Antes esta función existía pero nunca se llamaba: las IPs candidatas
+    # nunca quedaban guardadas pese a lo que indicaba el README.
+    guardar_ips(candidatas, args.output)
+    print(f"\n[*] {len(candidatas)} IP(s) candidata(s) guardadas en: {args.output}")
+
+    if args.json:
+        resultado = {
+            "dominio": dominio,
+            "ip_cloudflare": cf_ip,
+            "ip_real": info.get("ip"),
+            "info_ip": info,
+            "puertos_abiertos": puertos,
+            "headers": headers,
+            "tecnologias": tecnologias,
+            "waf": waf,
+            "fuzzing": fuzz,
+            "vulnerabilidades": vulns,
+            "leaks_github": leaks_github,
+            "leaks_pastebin": leaks_pastebin,
+            "whois": whois_info,
+            "ips_candidatas": candidatas,
+        }
+        with open(args.json, "w") as f:
+            json.dump(resultado, f, indent=2, default=str)
+        print(f"[*] Resultado completo guardado en: {args.json}")
 
 if __name__ == "__main__":
     main()
