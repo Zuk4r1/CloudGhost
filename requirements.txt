@@ -4,3 +4,5 @@ python-whois
 python-dotenv
 urllib3
 mmh3
+PySocks
+aiohttp
